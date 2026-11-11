@@ -174,6 +174,32 @@ jobs:
               '    def reset_month(self):\n        prefix = f"{self.year:04d}-{self.month:02d}-"\n        self.overrides = {\n            day: working\n            for day, working in self.overrides.items()\n            if not day.startswith(prefix)\n        }\n        self.render_calendar()\n\n    def sync_holidays(self):\n        settings = self.calendar_settings()\n        try:\n            marked, makeup, skipped = public_holidays.sync_holidays(settings, self.year)\n        except OSError as error:\n            messagebox.showerror(\n                "同步失敗",\n                f"無法下載國定假日資料，請檢查網路後再試。\\n{error}",\n                parent=self,\n            )\n            return\n        payroll.save_settings(settings)\n        self.app.config = settings\n        self.overrides = dict(settings["overrides"])\n        self.render_calendar()\n        note = f"已同步 {self.year} 年國定假日：標記放假 {marked} 天、補班 {makeup} 天。"\n        if skipped:\n            note += f"\\n已有手動標記 {skipped} 天未更動。"\n        messagebox.showinfo("同步完成", note, parent=self)\n')
           print("Taiwan holiday sync added OK")
           PYEOF
+      - name: Add countdown and macOS window controls
+        run: |
+          python3 - <<'PYEOF'
+          from pathlib import Path
+          def patch(path, old, new, count=1):
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              assert old in text, f"pattern not found in {path}: {old[:60]!r}"
+              p.write_text(text.replace(old, new, count), encoding="utf-8")
+          patch("src/salary_motivator/app.py",
+              '        self.root.protocol("WM_DELETE_WINDOW", self.hide_to_tray)\n',
+              '        if sys.platform == "darwin":\n            self.root.protocol("WM_DELETE_WINDOW", self.quit)\n        else:\n            self.root.protocol("WM_DELETE_WINDOW", self.hide_to_tray)\n')
+          patch("src/salary_motivator/app.py",
+              '        self.control(280, "設定", self.settings, width=42)\n        self.control(330, "−", self.minimize, width=22)\n        self.control(360, "▾", self.hide_to_tray, width=22)\n        self.control(390, "×", self.hide_to_tray, width=22)\n',
+              '        self.control(280, "設定", self.settings, width=42)\n        if sys.platform != "darwin":\n            # macOS already has traffic-light buttons; the custom ones\n            # would duplicate them, and hide-to-tray does not exist there.\n            self.control(330, "−", self.minimize, width=22)\n            self.control(360, "▾", self.hide_to_tray, width=22)\n            self.control(390, "×", self.hide_to_tray, width=22)\n')
+          patch("src/salary_motivator/app.py",
+              '    def hide_to_tray(self):\n        if self.tray.ready:\n',
+              '    def hide_to_tray(self):\n        if sys.platform == "darwin":\n            # No tray on macOS: just minimise to the Dock.\n            self.minimize_taskbar()\n            return\n        if self.tray.ready:\n')
+          patch("src/salary_motivator/app.py",
+              '        canvas.itemconfigure(\n            self.time_id,\n            text=f"{now:%m.%d}  /  {self.config[\'start\']} — {self.config[\'end\']}",\n        )\n',
+              '        canvas.itemconfigure(\n            self.time_id,\n            text=f"{now:%m.%d}  /  {self.config[\'start\']} — {self.config[\'end\']}{self.countdown_suffix(now)}",\n        )\n')
+          patch("src/salary_motivator/app.py",
+              '    def income_status(self, now, income):\n',
+              '    def countdown_suffix(self, now):\n        if not is_workday(now.date(), self.config):\n            return ""\n        start_seconds = minutes(self.config["start"]) * 60\n        end_seconds = minutes(self.config["end"]) * 60\n        current_seconds = now.hour * 3600 + now.minute * 60 + now.second\n        if current_seconds >= end_seconds:\n            return "  ·  已下班"\n        if current_seconds < start_seconds:\n            remaining = start_seconds - current_seconds\n            label = "上班倒數"\n        else:\n            remaining = end_seconds - current_seconds\n            label = "下班倒數"\n        hours, rest = divmod(remaining, 3600)\n        mins, secs = divmod(rest, 60)\n        return f"  ·  {label} {hours:02d}:{mins:02d}:{secs:02d}"\n\n    def income_status(self, now, income):\n')
+          print("Countdown and macOS window controls added OK")
+          PYEOF
       - name: Install PyInstaller
         run: pip install pyinstaller certifi
       - name: Make app icon
