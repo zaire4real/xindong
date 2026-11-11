@@ -175,7 +175,7 @@ jobs:
           print("Taiwan holiday sync added OK")
           PYEOF
       - name: Install PyInstaller
-        run: pip install pyinstaller
+        run: pip install pyinstaller certifi
       - name: Make app icon
         run: |
           mkdir -p icon.iconset
