@@ -10,10 +10,12 @@ Only the standard library is used, and nothing is downloaded until
 the user presses the sync button in the settings dialog.
 """
 
+import certifi
 import csv
 import datetime as dt
 import io
 import re
+import ssl
 import urllib.parse
 import urllib.request
 
@@ -63,8 +65,11 @@ def _parse_calendar(csv_text, year):
 
 
 def _open(url):
+    # The Python bundled into the macOS app has no CA bundle of its own;
+    # use certifi's so HTTPS verification works on a plain Mac.
+    context = ssl.create_default_context(cafile=certifi.where())
     request = urllib.request.Request(url, headers={"User-Agent": "SalaryMotivator"})
-    return urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT)
+    return urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT, context=context)
 
 
 def fetch_holidays(year):
