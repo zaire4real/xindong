@@ -170,17 +170,17 @@ jobs:
       - name: Build .app with PyInstaller
         run: |
           printf 'from salary_motivator.app import main\n\nmain()\n' > launcher.py
-          python3 -m PyInstaller --noconfirm --windowed --name "薪动" --icon icon.icns --paths src --add-data "src/salary_motivator/assets:salary_motivator/assets" launcher.py
-          ls -lh "dist/薪动.app"
+          python3 -m PyInstaller --noconfirm --windowed --name "薪動" --icon icon.icns --paths src --add-data "src/salary_motivator/assets:salary_motivator/assets" launcher.py
+          ls -lh "dist/薪動.app"
       - name: Make .dmg
         run: |
-          hdiutil create -volname "薪动" -srcfolder "dist/薪动.app" -ov -format UDZO "dist/薪动.dmg"
+          hdiutil create -volname "薪動" -srcfolder "dist/薪動.app" -ov -format UDZO "dist/薪動.dmg"
           ls -lh dist/
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: xindong-macos
           path: |
-            dist/薪动.dmg
-            dist/薪动.app
+            dist/薪動.dmg
+            dist/薪動.app
           if-no-files-found: error
