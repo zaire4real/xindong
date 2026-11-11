@@ -21,7 +21,6 @@ jobs:
               text = p.read_text(encoding="utf-8")
               assert old in text, f"pattern not found in {path}: {old[:60]!r}"
               p.write_text(text.replace(old, new, 1), encoding="utf-8")
-          # window_chrome.py: macOS has no X11; return the screen fallback and skip undecorating.
           patch("src/salary_motivator/platform/window_chrome.py",
               "import ctypes as C\nimport ctypes.util\nimport os\n",
               "import ctypes as C\nimport ctypes.util\nimport os\nimport sys\n")
@@ -31,14 +30,12 @@ jobs:
           patch("src/salary_motivator/platform/window_chrome.py",
               "def undecorate(root):\n    root.update_idletasks()\n",
               "def undecorate(root):\n    root.update_idletasks()\n    if sys.platform == \"darwin\":\n        return\n")
-          # tray.py: macOS has no GTK tray host; report unavailable instead of spawning the Linux helper.
           patch("src/salary_motivator/platform/tray.py",
               "        self.thread = threading.Thread(\n            target=self._windows if os.name == \"nt\" else self._linux, daemon=True\n        )",
               "        self.thread = threading.Thread(\n            target=(\n                self._windows\n                if os.name == \"nt\"\n                else self._darwin\n                if sys.platform == \"darwin\"\n                else self._linux\n            ),\n            daemon=True,\n        )")
           patch("src/salary_motivator/platform/tray.py",
               "    def _linux(self):",
               "    def _darwin(self):\n        # macOS has no GTK tray host; the widget stays visible instead.\n        self.emit(\"unavailable\")\n\n    def _linux(self):")
-          # app.py: use macOS system fonts (PingFang TC for Chinese, Menlo for numbers).
           patch("src/salary_motivator/app.py",
               "import queue\n",
               "import queue\nimport sys\n")
@@ -46,6 +43,113 @@ jobs:
               "        self.font = \"Microsoft YaHei UI\" if os.name == \"nt\" else \"Noto Sans CJK SC\"\n        self.number_font = \"Consolas\" if os.name == \"nt\" else \"DejaVu Sans Mono\"\n",
               "        if sys.platform == \"darwin\":\n            self.font = \"PingFang TC\"\n            self.number_font = \"Menlo\"\n        else:\n            self.font = \"Microsoft YaHei UI\" if os.name == \"nt\" else \"Noto Sans CJK SC\"\n            self.number_font = \"Consolas\" if os.name == \"nt\" else \"DejaVu Sans Mono\"\n")
           print("macOS patch applied OK")
+          PYEOF
+      - name: Apply Traditional Chinese (Taiwan) translation
+        run: |
+          python3 - <<'PYEOF'
+          from pathlib import Path
+          def patch(path, old, new, count=1):
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              assert old in text, f"pattern not found in {path}: {old[:60]!r}"
+              p.write_text(text.replace(old, new, count), encoding="utf-8")
+          def rep_all(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              assert old in text, f"pattern not found in {path}: {old[:60]!r}"
+              p.write_text(text.replace(old, new), encoding="utf-8")
+          # App window: Traditional Chinese + NT$ currency symbol.
+          for old, new in [
+              ('"薪动 · PAYDAY"', '"薪動 · PAYDAY"'),
+              ('"上班鼓励器"', '"上班鼓勵器"'),
+              ('"今日累计收入"', '"今日累計收入"'),
+              ('"今日目标"', '"今日目標"'),
+              ('"设置"', '"設定"'),
+              ('"今日目标达成 · 下班快乐"', '"今日目標達成 · 下班快樂"'),
+              ('"尚未开工 · 美好的一天即将开始"', '"尚未開工 · 美好的一天即將開始"'),
+              ('f"¥{income.amount:,.4f}"', 'f"NT${income.amount:,.4f}"'),
+              ('f"¥{income.daily_target:,.2f}"', 'f"NT${income.daily_target:,.2f}"'),
+              ('f"↑  +¥{rate:.4f} / 秒   稳稳进账中"', 'f"↑  +NT${rate:.4f} / 秒   穩穩進帳中"'),
+          ]:
+              patch("src/salary_motivator/app.py", old, new)
+          # Model: rest-mode values become Traditional; keep reading old Simplified configs.
+          rep_all("src/salary_motivator/model.py", '"双休"', '"雙休"')
+          rep_all("src/salary_motivator/model.py", '"单休"', '"單休"')
+          for old, new in [
+              ('"请选择有效的配色方案。"', '"請選擇有效的配色方案。"'),
+              ('"窗口不透明度须在 65%–100% 之间。"', '"視窗不透明度須在 65%–100% 之間。"'),
+              ('"最小化设置无效。"', '"最小化設定無效。"'),
+              ('"请输入大于 0 且不超过十亿元的月薪。"', '"請輸入大於 0 且不超過十億元的月薪。"'),
+              ('"下班时间必须晚于上班时间（暂不支持跨夜班）。"', '"下班時間必須晚於上班時間（暫不支援跨夜班）。"'),
+              ('"休息日设置无效。"', '"休息日設定無效。"'),
+          ]:
+              patch("src/salary_motivator/model.py", old, new)
+          rep_all("src/salary_motivator/model.py", '"日历设置无效。"', '"日曆設定無效。"')
+          patch("src/salary_motivator/model.py",
+              '        settings.update(json.loads(CONFIG.read_text(encoding="utf-8")))\n',
+              '        settings.update(json.loads(CONFIG.read_text(encoding="utf-8")))\n        if settings.get("rest") == "单休":\n            settings["rest"] = "單休"\n        elif settings.get("rest") == "双休":\n            settings["rest"] = "雙休"\n')
+          # Theme names and descriptions.
+          for old, new in [
+              ("夜航绿", "夜航綠"), ("莫兰迪", "莫蘭迪"), ("玫瑰暮霭", "玫瑰暮靄"),
+              ("森雾亚麻", "森霧亞麻"), ("克莱因蓝", "克萊因藍"),
+              ("石墨灰 × 荧光青柠", "石墨灰 × 螢光青檸"),
+              ("浓咖啡 × 焦糖金", "濃咖啡 × 焦糖金"),
+              ("雾灰紫 × 低饱和鼠尾草", "霧灰紫 × 低飽和鼠尾草"),
+              ("雾玫粉 × 珍珠白 × 暮色棕", "霧玫粉 × 珍珠白 × 暮色棕"),
+              ("迷雾黑 × 炽焰红", "迷霧黑 × 熾焰紅"),
+              ("森雾青 × 亚麻米 × 苔灰绿", "森霧青 × 亞麻米 × 苔灰綠"),
+              ("奶油白 × 自然苔绿", "奶油白 × 自然苔綠"),
+              ("浓郁群青 × 冰川青蓝", "濃郁群青 × 冰川青藍"),
+          ]:
+              rep_all("src/salary_motivator/themes.py", old, new)
+          # Settings dialog.
+          for old, new in [
+              ('self.title("工资与工作日设置")', 'self.title("薪資與工作日設定")'),
+              ('text="工资与日历"', 'text="薪資與日曆"'),
+              ('text="外观与启动"', 'text="外觀與啟動"'),
+              ('text="保存"', 'text="儲存"'),
+              ('"月薪（元）"', '"月薪（NT$）"'),
+              ('"上班时间 HH:MM"', '"上班時間 HH:MM"'),
+              ('"下班时间 HH:MM"', '"下班時間 HH:MM"'),
+              ('values=("单休", "双休")', 'values=("單休", "雙休")'),
+              ('text="单休的休息日"', 'text="單休的休息日"'),
+              ('text="重置本月调休"', 'text="重設本月調休"'),
+              ('f"本月计薪工作日：{count} 天"', 'f"本月計薪工作日：{count} 天"'),
+              ('messagebox.showerror("无法保存", str(error), parent=self)', 'messagebox.showerror("無法儲存", str(error), parent=self)'),
+              ('text="点击日期切换班/休，* 表示手动调整。\\n" "法定节假日、调休请手动标记。\\n" "日薪 = 月薪 ÷ 当月工作日，班内连续线性增长。"', 'text="點按日期切換班/休，* 表示手動調整。\\n" "國定假日、調休請手動標記。\\n" "日薪 = 月薪 ÷ 當月工作日，班內連續線性成長。"'),
+          ]:
+              patch("src/salary_motivator/ui/preferences.py", old, new)
+          # Appearance panel.
+          for old, new in [
+              ('text="选一种今天的心情色"', 'text="選一種今天的心情色"'),
+              ('f"窗口不透明度：{self.opacity.get():.0f}%"', 'f"視窗不透明度：{self.opacity.get():.0f}%"'),
+              ('text="登录电脑后自动启动"', 'text="登入電腦後自動啟動"'),
+              ('text="最小化时收起到托盘"', 'text="最小化時收合到選單列"'),
+              ('text="切换配色和透明度可实时预览；点击保存后记住选择。"', 'text="切換配色和透明度可即時預覽；點按儲存後記住選擇。"'),
+          ]:
+              patch("src/salary_motivator/ui/appearance.py", old, new)
+          # Tray menus and tooltips.
+          for old, new in [
+              ('("show", "显示窗口")', '("show", "顯示視窗")'),
+              ('("settings", "设置")', '("settings", "設定")'),
+              ('("quit", "退出")', '("quit", "結束")'),
+              ('(1, "显示窗口(&S)")', '(1, "顯示視窗(&S)")'),
+              ('(2, "设置(&O)")', '(2, "設定(&O)")'),
+              ('(3, "退出(&Q)")', '(3, "結束(&Q)")'),
+              ('"薪动 · 上班鼓励器 — 点击显示，右键菜单"', '"薪動 · 上班鼓勵器 — 點按顯示，右鍵選單"'),
+              ('"薪动 · 点击显示，右键打开菜单"', '"薪動 · 點按顯示，右鍵開啟選單"'),
+              ('status.set_title("上班鼓励器")', 'status.set_title("上班鼓勵器")'),
+          ]:
+              patch("src/salary_motivator/platform/tray.py", old, new)
+          patch("src/salary_motivator/platform/autostart.py",
+              '"Name[zh_CN]=上班鼓励器\\nExec="', '"Name[zh_TW]=上班鼓勵器\\nExec="')
+          patch("src/salary_motivator/platform/window_chrome.py",
+              '"无法获取窗口"', '"無法取得視窗"')
+          patch("src/salary_motivator/platform/window_chrome.py",
+              '"无法连接显示服务"', '"無法連接顯示服務"')
+          patch("src/salary_motivator/__init__.py",
+              "'薪动 · 上班鼓励器。'", "'薪動 · 上班鼓勵器。'")
+          print("zh-TW translation applied OK")
           PYEOF
       - name: Install PyInstaller
         run: pip install pyinstaller
