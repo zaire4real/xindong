@@ -151,6 +151,29 @@ jobs:
               '"薪动 · 上班鼓励器。"', '"薪動 · 上班鼓勵器。"')
           print("zh-TW translation applied OK")
           PYEOF
+      - name: Add Taiwan holiday sync
+        run: |
+          python3 - <<'PYEOF'
+          from pathlib import Path
+          def patch(path, old, new, count=1):
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              assert old in text, f"pattern not found in {path}: {old[:60]!r}"
+              p.write_text(text.replace(old, new, count), encoding="utf-8")
+          patch("src/salary_motivator/ui/preferences.py",
+              "from ..platform import autostart as startup\n",
+              "from ..platform import autostart as startup\nfrom ..platform import holidays as public_holidays\n")
+          patch("src/salary_motivator/ui/preferences.py",
+              '        ttk.Button(self.calendar_page, text="重設本月調休", command=self.reset_month).grid(\n            row=9, column=0, columnspan=2, sticky="w", pady=(8, 0)\n        )',
+              '        ttk.Button(self.calendar_page, text="重設本月調休", command=self.reset_month).grid(\n            row=9, column=0, columnspan=2, sticky="w", pady=(8, 0)\n        )\n        ttk.Button(self.calendar_page, text="同步國定假日", command=self.sync_holidays).grid(\n            row=10, column=0, columnspan=2, sticky="w", pady=(8, 0)\n        )')
+          patch("src/salary_motivator/ui/preferences.py",
+              "國定假日、調休請手動標記。",
+              "國定假日可用「同步國定假日」自動標記，調休請手動標記。")
+          patch("src/salary_motivator/ui/preferences.py",
+              '    def reset_month(self):\n        prefix = f"{self.year:04d}-{self.month:02d}-"\n        self.overrides = {\n            day: working\n            for day, working in self.overrides.items()\n            if not day.startswith(prefix)\n        }\n        self.render_calendar()\n',
+              '    def reset_month(self):\n        prefix = f"{self.year:04d}-{self.month:02d}-"\n        self.overrides = {\n            day: working\n            for day, working in self.overrides.items()\n            if not day.startswith(prefix)\n        }\n        self.render_calendar()\n\n    def sync_holidays(self):\n        settings = self.calendar_settings()\n        try:\n            marked, makeup, skipped = public_holidays.sync_holidays(settings, self.year)\n        except OSError as error:\n            messagebox.showerror(\n                "同步失敗",\n                f"無法下載國定假日資料，請檢查網路後再試。\\n{error}",\n                parent=self,\n            )\n            return\n        payroll.save_settings(settings)\n        self.app.config = settings\n        self.overrides = dict(settings["overrides"])\n        self.render_calendar()\n        note = f"已同步 {self.year} 年國定假日：標記放假 {marked} 天、補班 {makeup} 天。"\n        if skipped:\n            note += f"\\n已有手動標記 {skipped} 天未更動。"\n        messagebox.showinfo("同步完成", note, parent=self)\n')
+          print("Taiwan holiday sync added OK")
+          PYEOF
       - name: Install PyInstaller
         run: pip install pyinstaller
       - name: Make app icon
