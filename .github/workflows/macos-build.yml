@@ -1,0 +1,82 @@
+name: macOS Build
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Apply macOS compatibility patch
+        run: |
+          python3 - <<'PYEOF'
+          from pathlib import Path
+          def patch(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              assert old in text, f"pattern not found in {path}: {old[:60]!r}"
+              p.write_text(text.replace(old, new, 1), encoding="utf-8")
+          # window_chrome.py: macOS has no X11; return the screen fallback and skip undecorating.
+          patch("src/salary_motivator/platform/window_chrome.py",
+              "import ctypes as C\nimport ctypes.util\nimport os\n",
+              "import ctypes as C\nimport ctypes.util\nimport os\nimport sys\n")
+          patch("src/salary_motivator/platform/window_chrome.py",
+              "    fallback = (0, 0, root.winfo_screenwidth(), root.winfo_screenheight())\n",
+              "    fallback = (0, 0, root.winfo_screenwidth(), root.winfo_screenheight())\n    if sys.platform == \"darwin\":\n        return fallback\n")
+          patch("src/salary_motivator/platform/window_chrome.py",
+              "def undecorate(root):\n    root.update_idletasks()\n",
+              "def undecorate(root):\n    root.update_idletasks()\n    if sys.platform == \"darwin\":\n        return\n")
+          # tray.py: macOS has no GTK tray host; report unavailable instead of spawning the Linux helper.
+          patch("src/salary_motivator/platform/tray.py",
+              "        self.thread = threading.Thread(\n            target=self._windows if os.name == \"nt\" else self._linux, daemon=True\n        )",
+              "        self.thread = threading.Thread(\n            target=(\n                self._windows\n                if os.name == \"nt\"\n                else self._darwin\n                if sys.platform == \"darwin\"\n                else self._linux\n            ),\n            daemon=True,\n        )")
+          patch("src/salary_motivator/platform/tray.py",
+              "    def _linux(self):",
+              "    def _darwin(self):\n        # macOS has no GTK tray host; the widget stays visible instead.\n        self.emit(\"unavailable\")\n\n    def _linux(self):")
+          # app.py: use macOS system fonts (PingFang TC for Chinese, Menlo for numbers).
+          patch("src/salary_motivator/app.py",
+              "import queue\n",
+              "import queue\nimport sys\n")
+          patch("src/salary_motivator/app.py",
+              "        self.font = \"Microsoft YaHei UI\" if os.name == \"nt\" else \"Noto Sans CJK SC\"\n        self.number_font = \"Consolas\" if os.name == \"nt\" else \"DejaVu Sans Mono\"\n",
+              "        if sys.platform == \"darwin\":\n            self.font = \"PingFang TC\"\n            self.number_font = \"Menlo\"\n        else:\n            self.font = \"Microsoft YaHei UI\" if os.name == \"nt\" else \"Noto Sans CJK SC\"\n            self.number_font = \"Consolas\" if os.name == \"nt\" else \"DejaVu Sans Mono\"\n")
+          print("macOS patch applied OK")
+          PYEOF
+      - name: Install PyInstaller
+        run: pip install pyinstaller
+      - name: Make app icon
+        run: |
+          mkdir -p icon.iconset
+          sips -z 16 16 src/salary_motivator/assets/icon.png --out icon.iconset/icon_16x16.png
+          sips -z 32 32 src/salary_motivator/assets/icon.png --out icon.iconset/icon_16x16@2x.png
+          sips -z 32 32 src/salary_motivator/assets/icon.png --out icon.iconset/icon_32x32.png
+          sips -z 64 64 src/salary_motivator/assets/icon.png --out icon.iconset/icon_32x32@2x.png
+          sips -z 128 128 src/salary_motivator/assets/icon.png --out icon.iconset/icon_128x128.png
+          sips -z 256 256 src/salary_motivator/assets/icon.png --out icon.iconset/icon_128x128@2x.png
+          sips -z 256 256 src/salary_motivator/assets/icon.png --out icon.iconset/icon_256x256.png
+          sips -z 512 512 src/salary_motivator/assets/icon.png --out icon.iconset/icon_256x256@2x.png
+          sips -z 512 512 src/salary_motivator/assets/icon.png --out icon.iconset/icon_512x512.png
+          sips -z 1024 1024 src/salary_motivator/assets/icon.png --out icon.iconset/icon_512x512@2x.png
+          iconutil -c icns icon.iconset -o icon.icns
+      - name: Build .app with PyInstaller
+        run: |
+          printf 'from salary_motivator.app import main\n\nmain()\n' > launcher.py
+          python3 -m PyInstaller --noconfirm --windowed --name "薪动" --icon icon.icns --paths src --add-data "src/salary_motivator/assets:salary_motivator/assets" launcher.py
+          ls -lh "dist/薪动.app"
+      - name: Make .dmg
+        run: |
+          hdiutil create -volname "薪动" -srcfolder "dist/薪动.app" -ov -format UDZO "dist/薪动.dmg"
+          ls -lh dist/
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: xindong-macos
+          path: |
+            dist/薪动.dmg
+            dist/薪动.app
+          if-no-files-found: error
