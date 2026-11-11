@@ -148,7 +148,7 @@ jobs:
           patch("src/salary_motivator/platform/window_chrome.py",
               '"无法连接显示服务"', '"無法連接顯示服務"')
           patch("src/salary_motivator/__init__.py",
-              "'薪动 · 上班鼓励器。'", "'薪動 · 上班鼓勵器。'")
+              '"薪动 · 上班鼓励器。"', '"薪動 · 上班鼓勵器。"')
           print("zh-TW translation applied OK")
           PYEOF
       - name: Install PyInstaller
